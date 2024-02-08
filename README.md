@@ -1,5 +1,8 @@
-
 # TypeScript
+## Patched to compile tsc to a QuickJS binary by @easrng
+To build, run `pnpm hereby build-tsc-bin` and copy the `lib` folder somewhere. It will have the `tsc` binary and the `lib.*.d.ts` files.
+
+## Original readme:
 
 [![GitHub Actions CI](https://github.com/microsoft/TypeScript/workflows/CI/badge.svg)](https://github.com/microsoft/TypeScript/actions?query=workflow%3ACI)
 [![npm version](https://badge.fury.io/js/typescript.svg)](https://www.npmjs.com/package/typescript)

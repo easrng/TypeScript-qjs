@@ -23,6 +23,7 @@ import {
     getStringComparer,
     isArray,
     isNodeLikeSystem,
+    isQuickJSLikeSystem,
     isString,
     mapDefined,
     matchesExclude,
@@ -49,6 +50,7 @@ import {
 
 declare function setTimeout(handler: (...args: any[]) => void, timeout: number): any;
 declare function clearTimeout(handle: any): void;
+declare const scriptArgs: string[];
 
 /**
  * djb2 hashing algorithm
@@ -1476,7 +1478,7 @@ export let sys: System = (() => {
     // not actually work.
     const byteOrderMarkIndicator = "\uFEFF";
 
-    function getNodeSystem(): System {
+    /*function getNodeSystem(): System {
         const nativePattern = /^native |^\([^)]+\)$|^(internal[\\/]|[a-zA-Z0-9_\s]+(\.js)?$)/;
         const _fs: typeof import("fs") = require("fs");
         const _path: typeof import("path") = require("path");
@@ -1597,7 +1599,7 @@ export let sys: System = (() => {
                         return stat.size;
                     }
                 }
-                catch { /*ignore*/ }
+                catch { /*ignore* / }
                 return 0;
             },
             exit(exitCode?: number): void {
@@ -1646,7 +1648,7 @@ export let sys: System = (() => {
          * `throwIfNoEntry` was added so recently that it's not in the node types.
          * This helper encapsulates the mitigating usage of `any`.
          * See https://github.com/nodejs/node/pull/33716
-         */
+         * /
         function statSync(path: string): import("fs").Stats | undefined {
             // throwIfNoEntry will be ignored by older versions of node
             return (_fs as any).statSync(path, { throwIfNoEntry: false });
@@ -1655,7 +1657,7 @@ export let sys: System = (() => {
         /**
          * Uses the builtin inspector APIs to capture a CPU profile
          * See https://nodejs.org/api/inspector.html#inspector_example_usage for details
-         */
+         * /
         function enableCPUProfiler(path: string, cb: () => void) {
             if (activeSession) {
                 cb();
@@ -1682,7 +1684,7 @@ export let sys: System = (() => {
         /**
          * Strips non-TS paths from the profile, so users with private projects shouldn't
          * need to worry about leaking paths by submitting a cpu profile to us
-         */
+         * /
         function cleanupPaths(profile: import("inspector").Profiler.Profile) {
             let externalFileCounter = 0;
             const remappedPaths = new Map<string, string>();
@@ -1693,7 +1695,7 @@ export let sys: System = (() => {
                 if (node.callFrame.url) {
                     const url = normalizeSlashes(node.callFrame.url);
                     if (containsPath(fileUrlRoot, url, useCaseSensitiveFileNames)) {
-                        node.callFrame.url = getRelativePathToDirectoryOrUrl(fileUrlRoot, url, fileUrlRoot, createGetCanonicalFileName(useCaseSensitiveFileNames), /*isAbsolutePathAnUrl*/ true);
+                        node.callFrame.url = getRelativePathToDirectoryOrUrl(fileUrlRoot, url, fileUrlRoot, createGetCanonicalFileName(useCaseSensitiveFileNames), /*isAbsolutePathAnUrl* / true);
                     }
                     else if (!nativePattern.test(url)) {
                         node.callFrame.url = (remappedPaths.has(url) ? remappedPaths : remappedPaths.set(url, `external${externalFileCounter}.js`)).get(url)!;
@@ -1754,7 +1756,7 @@ export let sys: System = (() => {
             return !fileExists(swapCase(__filename));
         }
 
-        /** Convert all lowercase chars to uppercase, and vice-versa */
+        /** Convert all lowercase chars to uppercase, and vice-versa * /
         function swapCase(s: string): string {
             return s.replace(/\w/g, ch => {
                 const up = ch.toUpperCase();
@@ -1860,7 +1862,7 @@ export let sys: System = (() => {
 
             try {
                 fd = _fs.openSync(fileName, "w");
-                _fs.writeSync(fd, data, /*position*/ undefined, "utf8");
+                _fs.writeSync(fd, data, /*position* / undefined, "utf8");
             }
             finally {
                 if (fd !== undefined) {
@@ -2015,11 +2017,329 @@ export let sys: System = (() => {
             hash.update(data);
             return hash.digest("hex");
         }
+    }*/
+
+    function getQuickJSSystem(): System {
+        type OSOperationTuple<T> = [T, error: number];
+        interface File {
+            puts(str: string): void;
+            close(): number;
+            fileno: number;
+            readAsString(): string;
+        }
+        interface Stat {
+            dev: number;
+            ino: number;
+            mode: number;
+            nlink: number;
+            uid: number;
+            gid: number;
+            rdev: number;
+            size: number;
+            blocks: number;
+            atime: number;
+            mtime: number;
+            ctime: number;
+        }
+        const os: {
+            getcwd: () => OSOperationTuple<string>;
+            realpath: (path: string) => OSOperationTuple<string>;
+            isatty: (fd: number) => boolean;
+            stat: (path: string) => OSOperationTuple<Stat>;
+            readdir: (path: string) => OSOperationTuple<string[]>;
+            S_IFDIR: number;
+            S_IFREG: number;
+            ttyGetWinSize: () => [number, number];
+            utimes: (path: string, atime: number, mtime: number) => number;
+            remove: (path: string) => number;
+            setTimeout: (fn: () => unknown, time: number) => number;
+            clearTimeout: (id: number) => number;
+            mkdir: (path: string) => number;
+        } = (globalThis as any).os;
+        const std: {
+            getenv: (name: string) => string | undefined;
+            open: (path: string, mode: string) => File | null;
+            out: File;
+            exit: (code: number) => never;
+            strerror: (errno: number) => string;
+            gc?: () => void;
+        } = (globalThis as any).std;
+        const throwErrno = (errno: number) => {
+            if (errno) {
+                throw new Error(std.strerror(errno));
+            }
+        };
+        function oscall<T extends "getcwd" | "realpath" | "stat" | "readdir">(fn: T, ...args: Parameters<typeof os[typeof fn]>): ReturnType<typeof os[typeof fn]>[0] {
+            // eslint-disable-next-line prefer-spread
+            const [value, error] = os[fn].apply(os, args);
+            throwErrno(error);
+            return value;
+        }
+        function assertPath(path: unknown) {
+            if (typeof path !== "string") {
+                throw new TypeError("Path must be a string. Received " + JSON.stringify(path));
+            }
+        }
+        function normalizeStringPosix(path: string, allowAboveRoot: boolean) {
+            let res = "";
+            let lastSegmentLength = 0;
+            let lastSlash = -1;
+            let dots = 0;
+            let code;
+            for (let i = 0; i <= path.length; ++i) {
+                if (i < path.length) code = path.charCodeAt(i);
+                else if (code === 47 /*/*/) break;
+                else code = 47 /*/*/;
+                if (code === 47 /*/*/) {
+                    if (lastSlash === i - 1 || dots === 1) {
+                        // NOOP
+                    }
+                    else if (lastSlash !== i - 1 && dots === 2) {
+                        if (res.length < 2 || lastSegmentLength !== 2 || res.charCodeAt(res.length - 1) !== 46 /*.*/ || res.charCodeAt(res.length - 2) !== 46 /*.*/) {
+                            if (res.length > 2) {
+                                const lastSlashIndex = res.lastIndexOf("/");
+                                if (lastSlashIndex !== res.length - 1) {
+                                    if (lastSlashIndex === -1) {
+                                        res = "";
+                                        lastSegmentLength = 0;
+                                    }
+                                    else {
+                                        res = res.slice(0, lastSlashIndex);
+                                        lastSegmentLength = res.length - 1 - res.lastIndexOf("/");
+                                    }
+                                    lastSlash = i;
+                                    dots = 0;
+                                    continue;
+                                }
+                            }
+                            else if (res.length === 2 || res.length === 1) {
+                                res = "";
+                                lastSegmentLength = 0;
+                                lastSlash = i;
+                                dots = 0;
+                                continue;
+                            }
+                        }
+                        if (allowAboveRoot) {
+                            if (res.length > 0) res += "/..";
+                            else res = "..";
+                            lastSegmentLength = 2;
+                        }
+                    }
+                    else {
+                        if (res.length > 0) res += "/" + path.slice(lastSlash + 1, i);
+                        else res = path.slice(lastSlash + 1, i);
+                        lastSegmentLength = i - lastSlash - 1;
+                    }
+                    lastSlash = i;
+                    dots = 0;
+                }
+                else if (code === 46 /*.*/ && dots !== -1) {
+                    ++dots;
+                }
+                else {
+                    dots = -1;
+                }
+            }
+            return res;
+        }
+        function resolvePath(path: string) {
+            let resolvedPath = "";
+            let resolvedAbsolute = false;
+            let cwd;
+            const args = [path];
+
+            for (let i = args.length - 1; i >= -1 && !resolvedAbsolute; i--) {
+                let path;
+                if (i >= 0) path = args[i];
+                else {
+                    if (cwd === undefined) cwd = system.getCurrentDirectory();
+                    path = cwd;
+                }
+
+                assertPath(path);
+
+                // Skip empty entries
+                if (path.length === 0) {
+                    continue;
+                }
+
+                resolvedPath = path + "/" + resolvedPath;
+                resolvedAbsolute = path.charCodeAt(0) === 47 /*/*/;
+            }
+
+            // At this point the path should be resolved to a full absolute path, but
+            // handle relative paths to be safe (might happen when process.cwd() fails)
+
+            // Normalize the path
+            resolvedPath = normalizeStringPosix(resolvedPath, !resolvedAbsolute);
+
+            if (resolvedAbsolute) {
+                if (resolvedPath.length > 0) return "/" + resolvedPath;
+                else return "/";
+            }
+            else if (resolvedPath.length > 0) {
+                return resolvedPath;
+            }
+            else {
+                return ".";
+            }
+        }
+        const system: System = {
+            args: scriptArgs.slice(1),
+            newLine: "\n",
+            useCaseSensitiveFileNames: true,
+            getCurrentDirectory() {
+                return oscall("getcwd");
+            },
+            getEnvironmentVariable(name) {
+                return std.getenv(name) || "";
+            },
+            writeFile(path: string, data: string, writeByteOrderMark?: boolean) {
+                // If a BOM is required, emit one
+                if (writeByteOrderMark) {
+                    data = byteOrderMarkIndicator + data;
+                }
+
+                let file: File | null | undefined;
+
+                try {
+                    file = std.open(path, "w");
+                    if (!file) {
+                        throw new Error("failed to open file");
+                    }
+                    file.puts(data);
+                }
+                finally {
+                    if (file) {
+                        throwErrno(file.close());
+                    }
+                }
+            },
+            debugMode: false,
+            tryEnableSourceMapsForHost() {},
+            setBlocking() {
+                // todo
+            },
+            writeOutputIsTTY() {
+                return os.isatty(std.out.fileno);
+            },
+            realpath(path: string) {
+                return oscall("realpath", path);
+            },
+            createHash: generateDjb2Hash,
+            createSHA256Hash: undefined,
+            getExecutingFilePath() {
+                return this.realpath!("/proc/self/exe");
+            },
+            directoryExists(path) {
+                const [stat, errno] = os.stat(path);
+                return Boolean(errno ? false : stat.mode & os.S_IFDIR);
+            },
+            fileExists(path) {
+                const [stat, errno] = os.stat(path);
+                return Boolean(errno ? false : stat.mode & os.S_IFREG);
+            },
+            getAccessibleFileSystemEntries(path: string): FileSystemEntries {
+                try {
+                    const entries = oscall("readdir", path || ".");
+                    const files: string[] = [];
+                    const directories: string[] = [];
+                    for (const entry of entries) {
+                        if (entry === "." || entry === "..") {
+                            continue;
+                        }
+
+                        const name = combinePaths(path, entry);
+                        const [stat, errno] = os.stat(name);
+                        if (errno) {
+                            continue;
+                        }
+
+                        if (stat.mode & os.S_IFREG) {
+                            files.push(entry);
+                        }
+                        else if (stat.mode & os.S_IFDIR) {
+                            directories.push(entry);
+                        }
+                    }
+                    files.sort();
+                    directories.sort();
+                    return { files, directories };
+                }
+                catch (e) {
+                    return emptyFileSystemEntries;
+                }
+            },
+            getDirectories(path) {
+                return this.getAccessibleFileSystemEntries!(path).directories.slice();
+            },
+            readFile(path, _encoding) {
+                const f = std.open(path, "r");
+                if (f) {
+                    let s: string | null;
+                    try {
+                        s = f.readAsString();
+                    }
+                    finally {
+                        f.close();
+                    }
+                    return s || undefined;
+                }
+            },
+            write(str: string) {
+                std.out.puts(str);
+            },
+            exit(exitCode) {
+                std.exit(exitCode || 0);
+            },
+            getWidthOfTerminal() {
+                return os.ttyGetWinSize()[0];
+            },
+            getModifiedTime(path) {
+                const [stat, errno] = os.stat(path);
+                if (errno) {
+                    return;
+                }
+                return new Date(stat.mtime);
+            },
+            setModifiedTime(path, date) {
+                const mtime = date.valueOf();
+                throwErrno(os.utimes(path, Date.now(), mtime));
+            },
+            storeFilesChangingSignatureDuringEmit: undefined,
+            now: undefined,
+            deleteFile(path) {
+                throwErrno(os.remove(path));
+            },
+            readDirectory(path: string, extensions?: readonly string[], excludes?: readonly string[], includes?: readonly string[], depth?: number): string[] {
+                return matchFiles(path, extensions, excludes, includes, this.useCaseSensitiveFileNames, this.getCurrentDirectory(), depth, this.getAccessibleFileSystemEntries!, this.realpath!);
+            },
+            clearScreen() {
+                this.write("\x1Bc");
+            },
+            clearTimeout: os.clearTimeout,
+            setTimeout: os.setTimeout,
+            getMemoryUsage() {
+                if (std.gc) {
+                    std.gc();
+                }
+                return parseInt(this.readFile("/proc/self/status")!.trim().match(/^VmRSS:\s+(\d+)/m)![1]) * 1024;
+            },
+            resolvePath,
+            createDirectory(path) {
+                throwErrno(os.mkdir(path));
+            },
+        };
+        return system;
     }
 
     let sys: System | undefined;
-    if (isNodeLikeSystem()) {
+    /* if (isNodeLikeSystem()) {
         sys = getNodeSystem();
+    } */
+    if (isQuickJSLikeSystem()) {
+        sys = getQuickJSSystem();
     }
     if (sys) {
         // patch writefile to create folder before writing the file

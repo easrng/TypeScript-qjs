@@ -908,6 +908,19 @@ export const configureExperimental = task({
     run: () => exec(process.execPath, ["scripts/configurePrerelease.mjs", "experimental", "package.json", "src/compiler/corePublic.ts"]),
 });
 
+export const buildQuickjs = task({
+    name: "build-quickjs",
+    description: "Builds quickjs",
+    run: () => exec("sh", ["-c", "cd ./node_modules/quickjs/ && make"]),
+});
+
+export const buildTsc = task({
+    name: "build-tsc-bin",
+    dependencies: [buildQuickjs, produceLKG, local],
+    description: "Builds the tsc binary",
+    run: () => exec("./node_modules/quickjs/qjsc", ["-S", "1048576", "./bin/qtsc.js", "-o", "lib/tsc", "-fno-string-normalize", "-fno-eval", "-fno-proxy", "-fno-bigint", "-D", "./built/local/tsc.js"]),
+});
+
 export const help = task({
     name: "help",
     description: "Prints the top-level tasks.",

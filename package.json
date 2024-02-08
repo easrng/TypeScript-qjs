@@ -108,9 +108,12 @@
         "inspector": false,
         "perf_hooks": false
     },
-    "packageManager": "npm@8.19.4",
+    "*packageManager": "npm@8.19.4",
     "volta": {
         "node": "20.1.0",
         "npm": "8.19.4"
+    },
+    "dependencies": {
+        "quickjs": "github:bellard/quickjs"
     }
 }
