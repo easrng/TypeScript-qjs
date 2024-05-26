@@ -2059,11 +2059,13 @@ export let sys: System = (() => {
         const std: {
             getenv: (name: string) => string | undefined;
             open: (path: string, mode: string) => File | null;
+            in: File;
             out: File;
             exit: (code: number) => never;
             strerror: (errno: number) => string;
             gc?: () => void;
         } = (globalThis as any).std;
+        const libs: Record<string, string> = (globalThis as any)._lib_;
         const throwErrno = (errno: number) => {
             if (errno) {
                 throw new Error(std.strerror(errno));
@@ -2222,7 +2224,7 @@ export let sys: System = (() => {
                 // todo
             },
             writeOutputIsTTY() {
-                return os.isatty(std.out.fileno);
+                return os.isatty(std.in.fileno);
             },
             realpath(path: string) {
                 return oscall("realpath", path);
@@ -2230,7 +2232,7 @@ export let sys: System = (() => {
             createHash: generateDjb2Hash,
             createSHA256Hash: undefined,
             getExecutingFilePath() {
-                return this.realpath!("/proc/self/exe");
+                return "/_lib_/exe";
             },
             directoryExists(path) {
                 const [stat, errno] = os.stat(path);
@@ -2275,6 +2277,7 @@ export let sys: System = (() => {
                 return this.getAccessibleFileSystemEntries!(path).directories.slice();
             },
             readFile(path, _encoding) {
+                if (path in libs) return libs[path]!;
                 const f = std.open(path, "r");
                 if (f) {
                     let s: string | null;
@@ -2294,7 +2297,7 @@ export let sys: System = (() => {
                 std.exit(exitCode || 0);
             },
             getWidthOfTerminal() {
-                return os.ttyGetWinSize()[0];
+                return os.ttyGetWinSize()?.[0];
             },
             getModifiedTime(path) {
                 const [stat, errno] = os.stat(path);

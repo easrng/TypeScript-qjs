@@ -918,7 +918,7 @@ export const buildTsc = task({
     name: "build-tsc-bin",
     dependencies: [buildQuickjs, produceLKG, local],
     description: "Builds the tsc binary",
-    run: () => exec("./node_modules/quickjs/qjsc", ["-S", "1048576", "./bin/qtsc.js", "-o", "lib/tsc", "-fno-string-normalize", "-fno-eval", "-fno-proxy", "-fno-bigint", "-D", "./built/local/tsc.js"]),
+    run: () => exec("./node_modules/quickjs/qjsc", ["-v", "-S", "1048576", "-o", "lib/tsc", "-fno-string-normalize", "-fno-eval", "-fno-proxy", "-fno-bigint", "-D", "./built/local/tsc.js", "./bin/qtsc.js"]),
 });
 
 export const help = task({

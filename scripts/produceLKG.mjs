@@ -16,6 +16,16 @@ const root = path.join(__dirname, "..");
 const source = path.join(root, "built/local");
 const dest = path.join(root, "lib");
 
+const fsBundle = async () => {
+    const paths = await glob(path.join("**", "*"), { dot: true, mark: true, cwd: dest });
+    const dataPromises = paths.map(async p => {
+        const content = p.endsWith("/") ? "" : await fs.promises.readFile(path.join(dest, p), "utf8");
+        return ["/_lib_/" + p, content];
+    });
+    const data = await Promise.all(dataPromises);
+    await fs.promises.writeFile(path.join(dest, "fs.js"), `export default ${JSON.stringify(Object.fromEntries(data))}`, "utf8");
+};
+
 async function produceLKG() {
     console.log(`Building LKG from ${source} to ${dest}`);
     await fs.promises.rm(dest, { recursive: true, force: true });
@@ -23,6 +33,7 @@ async function produceLKG() {
     await copyLibFiles();
     await copyLocalizedDiagnostics();
     await copyTypesMap();
+    await fsBundle();
     // await copyScriptOutputs();
     // await copyDeclarationOutputs();
     // await writeGitAttributes();
